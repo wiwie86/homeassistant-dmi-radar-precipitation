@@ -59,6 +59,7 @@ class DMIRadarPrecipitationCoordinator(DataUpdateCoordinator[RadarSnapshot]):
             await self._async_save_history(self._history)
             return result.snapshot
         except DMIRadarConnectionError as error:
+            _LOGGER.warning("Radar update failed for %.6f, %.6f: %s", self.latitude, self.longitude, error)
             raise UpdateFailed(f"Could not fetch DMI radar data: {error}") from error
 
     async def _async_load_history(self) -> tuple[RadarScanSample, ...]:

@@ -7,7 +7,7 @@
     "step": {
       "user": {
         "title": "Add DMI Radar Precipitation",
-        "description": "Estimate local precipitation from DMI radar composites.",
+        "description": "Estimate local precipitation from DMI radar composites.\n\nIf setup fails, details: {error_detail}",
         "data": {
           "latitude": "Latitude",
           "longitude": "Longitude"

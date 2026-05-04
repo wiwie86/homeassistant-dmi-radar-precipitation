@@ -7,7 +7,7 @@
     "step": {
       "user": {
         "title": "DMI Radar Precipitation hinzufuegen",
-        "description": "Schaetze lokalen Niederschlag aus DMI-Radar-Kompositen.",
+        "description": "Schaetze lokalen Niederschlag aus DMI-Radar-Kompositen.\n\nFalls die Einrichtung fehlschlaegt, Details: {error_detail}",
         "data": {
           "latitude": "Breitengrad",
           "longitude": "Laengengrad"

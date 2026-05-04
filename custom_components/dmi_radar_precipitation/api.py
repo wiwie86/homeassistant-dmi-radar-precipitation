@@ -25,6 +25,11 @@ class DMIRadarError(Exception):
 class DMIRadarConnectionError(DMIRadarError):
     """Raised when the radar API cannot be reached."""
 
+    def __init__(self, message: str, user_message: str | None = None) -> None:
+        """Initialize the exception with internal and user-facing messages."""
+        super().__init__(message)
+        self.user_message = user_message or message
+
 
 @dataclass(slots=True)
 class RadarScanSample:
@@ -121,7 +126,10 @@ class DMIRadarClient:
                 radar_point = current_point
 
         if not samples:
-            raise DMIRadarConnectionError("No radar composites were returned by DMI")
+            raise DMIRadarConnectionError(
+                "No radar composites were returned by DMI",
+                "No recent radar scans were available for the selected location and time window.",
+            )
 
         samples = [sample for sample in samples if sample.observed >= start]
         samples.sort(key=lambda sample: sample.observed)
@@ -195,9 +203,15 @@ class DMIRadarClient:
                 response.raise_for_status()
                 return await response.json()
         except ClientResponseError as error:
-            raise DMIRadarConnectionError(f"Unexpected radar API response: HTTP {error.status}") from error
+            raise DMIRadarConnectionError(
+                f"Unexpected radar API response: HTTP {error.status}",
+                f"DMI Radar API returned HTTP {error.status} while listing radar scans.",
+            ) from error
         except ClientError as error:
-            raise DMIRadarConnectionError("Failed to reach DMI Radar API") from error
+            raise DMIRadarConnectionError(
+                f"Failed to reach DMI Radar API: {error}",
+                f"Could not reach DMI Radar API while listing radar scans: {error}",
+            ) from error
 
     async def _async_get_bytes(self, url: str) -> bytes:
         """Download a radar file."""
@@ -206,9 +220,15 @@ class DMIRadarClient:
                 response.raise_for_status()
                 return await response.read()
         except ClientResponseError as error:
-            raise DMIRadarConnectionError(f"Unexpected radar file response: HTTP {error.status}") from error
+            raise DMIRadarConnectionError(
+                f"Unexpected radar file response: HTTP {error.status}",
+                f"DMI Radar API returned HTTP {error.status} while downloading a radar file.",
+            ) from error
         except ClientError as error:
-            raise DMIRadarConnectionError("Failed to download radar file") from error
+            raise DMIRadarConnectionError(
+                f"Failed to download radar file: {error}",
+                f"Could not download a radar HDF5 file from DMI: {error}",
+            ) from error
 
 
 def _resolve_radar_point(where: Any, latitude: float, longitude: float) -> RadarPoint:
