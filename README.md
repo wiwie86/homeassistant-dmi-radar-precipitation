@@ -9,7 +9,7 @@ What it does:
 - downloads recent DMI radar composite files and samples the nearest radar grid cell
 - converts radar reflectivity to estimated rain rate using the Z-R relation embedded in the file
 - exposes sensors for current rain rate and derived precipitation sums over recent time windows
-- exposes fixed midnight-aligned precipitation buckets for 10 min, 20 min, 30 min, 1h, 2h, 3h, 4h, 6h, 12h, and 24h charting
+- exposes chart-friendly bucket attributes on the rolling precipitation sensors for 6h and 24h windows
 - stores only compact per-scan derived values locally and fetches only new radar scans after the initial backfill
 - keeps setup validation lightweight by probing only a short recent radar window during config flow
 - backfills older radar history gradually after setup so 24-hour totals become complete without blocking configuration

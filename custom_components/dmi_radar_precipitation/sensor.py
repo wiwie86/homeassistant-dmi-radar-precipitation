@@ -99,6 +99,18 @@ def _aggregate_attributes(snapshot: RadarSnapshot, hours: int) -> dict[str, Any]
     return attributes
 
 
+def _window_bucket_attributes(snapshot: RadarSnapshot, window_hours: int) -> dict[str, Any]:
+    """Return rolling-window attributes plus aligned bucket series for charting."""
+    attributes = _aggregate_attributes(snapshot, window_hours)
+    for bucket_minutes in _bucket_sizes_for_window(window_hours):
+        attributes[f"buckets_{_bucket_label(bucket_minutes)}"] = _build_aligned_buckets(
+            snapshot,
+            bucket_minutes,
+            window_hours,
+        )
+    return attributes
+
+
 def _latest_observed(snapshot: RadarSnapshot) -> datetime | None:
     return snapshot.latest.observed if snapshot.latest is not None else None
 
@@ -107,71 +119,75 @@ def _distance_value(snapshot: RadarSnapshot) -> float:
     return round(snapshot.radar_point.distance_from_target_km, 3)
 
 
-def _aligned_interval_value(snapshot: RadarSnapshot, minutes: int) -> float | None:
+def _build_aligned_buckets(
+    snapshot: RadarSnapshot,
+    bucket_minutes: int,
+    window_hours: int,
+) -> list[dict[str, Any]]:
+    """Build aligned bucket series for a rolling window sensor."""
     if not snapshot.history:
-        return None
+        return []
 
     latest = snapshot.history[-1].observed
-    bucket_start_local, _bucket_end_local = _aligned_interval_bounds(latest, minutes)
-    bucket_start_utc = bucket_start_local.astimezone(dt_util.UTC)
-    values = [sample.estimated_mm for sample in snapshot.history if sample.observed >= bucket_start_utc]
-    return round(sum(values), 3)
+    latest_local = dt_util.as_local(latest)
+    window_start_utc = latest - timedelta(hours=window_hours)
+    window_start_local = dt_util.as_local(window_start_utc)
+    bucket = timedelta(minutes=bucket_minutes)
+    current_start_local = _floor_to_aligned_bucket(window_start_local, bucket_minutes)
+    buckets: list[dict[str, Any]] = []
 
-
-def _aligned_interval_attributes(snapshot: RadarSnapshot, minutes: int) -> dict[str, Any]:
-    attributes = _common_attributes(snapshot)
-    if not snapshot.history:
-        return attributes
-
-    latest = snapshot.history[-1].observed
-    bucket_start_local, bucket_end_local = _aligned_interval_bounds(latest, minutes)
-    bucket_start_utc = bucket_start_local.astimezone(dt_util.UTC)
-    relevant = [sample for sample in snapshot.history if sample.observed >= bucket_start_utc]
-    attributes.update(
-        {
-            "bucket_minutes": minutes,
-            "bucket_start": bucket_start_local.isoformat(),
-            "bucket_end": bucket_end_local.isoformat(),
-            "bucket_complete_from_start": bool(
-                snapshot.coverage_start and snapshot.coverage_start <= bucket_start_utc
+    while current_start_local <= latest_local:
+        current_end_local = current_start_local + bucket
+        current_start_utc = current_start_local.astimezone(dt_util.UTC)
+        current_end_utc = current_end_local.astimezone(dt_util.UTC)
+        mm = round(
+            sum(
+                sample.estimated_mm
+                for sample in snapshot.history
+                if sample.observed >= max(current_start_utc, window_start_utc)
+                and sample.observed < current_end_utc
             ),
-            "aligned_to_local_midnight": True,
-            "sample_count": len(relevant),
-            "history": [
-                {
-                    "observed": sample.observed.isoformat(),
-                    "mm": sample.estimated_mm,
-                    "rain_rate_mm_per_hour": sample.rain_rate_mm_per_hour,
-                }
-                for sample in relevant
-            ],
-        }
-    )
-    return attributes
+            3,
+        )
+        buckets.append(
+            {
+                "start": current_start_local.isoformat(),
+                "end": current_end_local.isoformat(),
+                "mm": mm,
+                "complete": bool(
+                    snapshot.coverage_start
+                    and snapshot.coverage_start <= current_start_utc
+                    and latest >= current_end_utc
+                ),
+            }
+        )
+        current_start_local = current_end_local
+
+    return buckets
 
 
-def _aligned_interval_bounds(observed: datetime, minutes: int) -> tuple[datetime, datetime]:
-    latest_local = dt_util.as_local(observed)
-    start_of_day = latest_local.replace(hour=0, minute=0, second=0, microsecond=0)
-    bucket = timedelta(minutes=minutes)
-    bucket_index = int((latest_local - start_of_day).total_seconds() // bucket.total_seconds())
-    bucket_start = start_of_day + bucket * bucket_index
-    bucket_end = bucket_start + bucket
-    return bucket_start, bucket_end
+def _floor_to_aligned_bucket(local_dt: datetime, minutes: int) -> datetime:
+    """Floor a local datetime to the nearest midnight-aligned bucket start."""
+    start_of_day = local_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    bucket_seconds = minutes * 60
+    offset_seconds = int((local_dt - start_of_day).total_seconds() // bucket_seconds) * bucket_seconds
+    return start_of_day + timedelta(seconds=offset_seconds)
 
 
-ALIGNED_BUCKET_SIZES: tuple[tuple[int, str], ...] = (
-    (10, "10 Minute Bucket"),
-    (20, "20 Minute Bucket"),
-    (30, "30 Minute Bucket"),
-    (60, "1 Hour Bucket"),
-    (120, "2 Hour Bucket"),
-    (180, "3 Hour Bucket"),
-    (240, "4 Hour Bucket"),
-    (360, "6 Hour Bucket"),
-    (720, "12 Hour Bucket"),
-    (1440, "24 Hour Bucket"),
-)
+def _bucket_sizes_for_window(window_hours: int) -> tuple[int, ...]:
+    """Return the supported chart bucket sizes for a rolling window."""
+    if window_hours <= 6:
+        return (60, 120, 180)
+    if window_hours <= 24:
+        return (60, 120, 180, 360, 720)
+    return ()
+
+
+def _bucket_label(bucket_minutes: int) -> str:
+    """Return the attribute suffix for a bucket size."""
+    if bucket_minutes % 60 == 0:
+        return f"{bucket_minutes // 60}h"
+    return f"{bucket_minutes}m"
 
 
 SENSOR_DESCRIPTIONS: tuple[DMIRadarSensorDescription, ...] = (
@@ -211,7 +227,7 @@ SENSOR_DESCRIPTIONS: tuple[DMIRadarSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
         suggested_display_precision=2,
         value_fn=lambda snapshot: _aggregate_value(snapshot, 6),
-        attributes_fn=lambda snapshot: _aggregate_attributes(snapshot, 6),
+        attributes_fn=lambda snapshot: _window_bucket_attributes(snapshot, 6),
     ),
     DMIRadarSensorDescription(
         key="precipitation_past_12_hours",
@@ -231,7 +247,7 @@ SENSOR_DESCRIPTIONS: tuple[DMIRadarSensorDescription, ...] = (
         suggested_display_precision=2,
         entity_registry_enabled_default=False,
         value_fn=lambda snapshot: _aggregate_value(snapshot, 24),
-        attributes_fn=lambda snapshot: _aggregate_attributes(snapshot, 24),
+        attributes_fn=lambda snapshot: _window_bucket_attributes(snapshot, 24),
     ),
     DMIRadarSensorDescription(
         key="latest_observed",
@@ -253,17 +269,6 @@ SENSOR_DESCRIPTIONS: tuple[DMIRadarSensorDescription, ...] = (
         value_fn=_distance_value,
         attributes_fn=_latest_attributes,
     ),
-) + tuple(
-    DMIRadarSensorDescription(
-        key=f"precipitation_{minutes}_minute_bucket",
-        name=f"Precipitation {label}",
-        icon="mdi:chart-bar",
-        native_unit_of_measurement=UnitOfLength.MILLIMETERS,
-        suggested_display_precision=2,
-        value_fn=lambda snapshot, bucket_minutes=minutes: _aligned_interval_value(snapshot, bucket_minutes),
-        attributes_fn=lambda snapshot, bucket_minutes=minutes: _aligned_interval_attributes(snapshot, bucket_minutes),
-    )
-    for minutes, label in ALIGNED_BUCKET_SIZES
 )
 
 
