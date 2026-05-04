@@ -10,6 +10,7 @@ What it does:
 - converts radar reflectivity to estimated rain rate using the Z-R relation embedded in the file
 - exposes sensors for current rain rate and derived precipitation sums over recent time windows
 - exposes chart-friendly bucket attributes on rolling precipitation sensors, with finer buckets for short windows and daily buckets for multi-day windows
+- emits Home Assistant events when radar-derived rain starts or stops at the configured point
 - stores only compact per-scan derived values locally and fetches only new radar scans after the initial backfill
 - keeps setup validation lightweight by probing only a short recent radar window during config flow
 - backfills older radar history gradually after setup so 24-hour totals become complete without blocking configuration
@@ -48,4 +49,6 @@ Notes:
 - polling defaults to 600 seconds and is clamped to a minimum of 300 seconds
 - history-based sensors are built from downloaded recent radar scans, not from station measurements
 - long-window sensors use compact chart buckets (`3d`: 6h, 12h, 1d; `7d`: 12h, 1d; `14d+`: 1d) to avoid oversized entity attributes
+- rolling precipitation sensors no longer expose raw per-scan sample lists as attributes; use the bucket attributes for charts instead
 - historical backfill is disabled by default and can be enabled in the integration options if you want Home Assistant to gradually download older radar files
+- the integration fires `dmi_radar_precipitation_rain_started` and `dmi_radar_precipitation_rain_stopped` with metadata about the location, observation time, rain rate, and source radar file

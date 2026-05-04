@@ -86,14 +86,6 @@ def _aggregate_attributes(snapshot: RadarSnapshot, hours: int) -> dict[str, Any]
                 "sample_count": len(relevant),
                 "latest_sample": latest.isoformat(),
                 "window_complete": window_complete,
-                "history": [
-                    {
-                        "observed": sample.observed.isoformat(),
-                        "mm": sample.estimated_mm,
-                        "rain_rate_mm_per_hour": sample.rain_rate_mm_per_hour,
-                    }
-                    for sample in relevant
-                ],
             }
         )
     return attributes

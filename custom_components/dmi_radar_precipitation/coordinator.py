@@ -12,7 +12,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import DMIRadarClient, DMIRadarConnectionError, RadarScanSample, RadarSnapshot
-from .const import BACKFILL_CHUNK_HOURS, CONF_ENABLE_BACKFILL, CONF_SCAN_INTERVAL, DEFAULT_ENABLE_BACKFILL, DEFAULT_NAME, DEFAULT_SCAN_INTERVAL, DOMAIN, HISTORY_HOURS, MIN_SCAN_INTERVAL
+from .const import BACKFILL_CHUNK_HOURS, CONF_ENABLE_BACKFILL, CONF_SCAN_INTERVAL, DEFAULT_ENABLE_BACKFILL, DEFAULT_NAME, DEFAULT_SCAN_INTERVAL, DOMAIN, EVENT_RAIN_STARTED, EVENT_RAIN_STOPPED, HISTORY_HOURS, MIN_SCAN_INTERVAL, RAINING_MM_PER_HOUR_THRESHOLD
 
 _LOGGER = logging.getLogger(__name__)
 STORAGE_VERSION = 1
@@ -32,6 +32,7 @@ class DMIRadarPrecipitationCoordinator(DataUpdateCoordinator[RadarSnapshot]):
         self.client = DMIRadarClient(aiohttp_client.async_get_clientsession(hass))
         self.store = Store(hass, STORAGE_VERSION, f"{DOMAIN}.{entry.entry_id}")
         self._history: tuple[RadarScanSample, ...] = ()
+        self._last_is_raining: bool | None = None
 
         super().__init__(
             hass,
@@ -51,6 +52,7 @@ class DMIRadarPrecipitationCoordinator(DataUpdateCoordinator[RadarSnapshot]):
             if not self._history:
                 self._history = await self._async_load_history()
                 if self._history:
+                    self._last_is_raining = _is_raining(self._history[-1])
                     _LOGGER.info(
                         "Loaded %s cached radar scans for %.6f, %.6f with coverage from %s to %s",
                         len(self._history),
@@ -123,10 +125,47 @@ class DMIRadarPrecipitationCoordinator(DataUpdateCoordinator[RadarSnapshot]):
                     self.longitude,
                     snapshot.coverage_start.isoformat() if snapshot.coverage_start else "unknown",
                 )
+            self._handle_rain_events(snapshot)
             return snapshot
         except DMIRadarConnectionError as error:
             _LOGGER.warning("Radar update failed for %.6f, %.6f: %s", self.latitude, self.longitude, error)
             raise UpdateFailed(f"Could not fetch DMI radar data: {error}") from error
+
+    def _handle_rain_events(self, snapshot: RadarSnapshot) -> None:
+        """Emit Home Assistant events when rain state changes."""
+        latest = snapshot.latest
+        if latest is None:
+            return
+
+        is_raining = _is_raining(latest)
+        previous_state = self._last_is_raining
+        self._last_is_raining = is_raining
+
+        if previous_state is None or previous_state == is_raining:
+            return
+
+        event_type = EVENT_RAIN_STARTED if is_raining else EVENT_RAIN_STOPPED
+        event_data = {
+            "entry_id": self.config_entry.entry_id,
+            "name": self.config_entry.title or DEFAULT_NAME,
+            "requested_latitude": snapshot.requested_latitude,
+            "requested_longitude": snapshot.requested_longitude,
+            "radar_latitude": snapshot.radar_point.latitude,
+            "radar_longitude": snapshot.radar_point.longitude,
+            "observed": latest.observed.isoformat(),
+            "rain_rate_mm_per_hour": round(latest.rain_rate_mm_per_hour, 3),
+            "estimated_mm": round(latest.estimated_mm, 3),
+            "source_file": latest.filename,
+        }
+        self.hass.bus.async_fire(event_type, event_data)
+        _LOGGER.info(
+            "Fired %s for %.6f, %.6f at %s with rain rate %.3f mm/h",
+            event_type,
+            self.latitude,
+            self.longitude,
+            latest.observed.isoformat(),
+            latest.rain_rate_mm_per_hour,
+        )
 
     async def _async_backfill_history(self, history: tuple[RadarScanSample, ...]) -> tuple[RadarScanSample, ...]:
         """Backfill older radar scans in small chunks after setup."""
@@ -229,3 +268,8 @@ def _parse_datetime(value: str | None):
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC)
+
+
+def _is_raining(sample: RadarScanSample) -> bool:
+    """Return whether a sampled radar scan indicates rain."""
+    return sample.rain_rate_mm_per_hour > RAINING_MM_PER_HOUR_THRESHOLD

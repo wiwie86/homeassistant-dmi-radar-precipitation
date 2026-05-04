@@ -7,6 +7,10 @@ from homeassistant.const import Platform
 DOMAIN = "dmi_radar_precipitation"
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
+EVENT_RAIN_STARTED = f"{DOMAIN}_rain_started"
+EVENT_RAIN_STOPPED = f"{DOMAIN}_rain_stopped"
+RAINING_MM_PER_HOUR_THRESHOLD = 0.0
+
 CONF_ENABLE_BACKFILL = "enable_backfill"
 CONF_SCAN_INTERVAL = "scan_interval"
 
