@@ -9,7 +9,7 @@ What it does:
 - downloads recent DMI radar composite files and samples the nearest radar grid cell
 - converts radar reflectivity to estimated rain rate using the Z-R relation embedded in the file
 - exposes sensors for current rain rate and derived precipitation sums over recent time windows
-- exposes chart-friendly bucket attributes on the rolling precipitation sensors for 6h and 24h windows
+- exposes chart-friendly bucket attributes on rolling precipitation sensors, with finer buckets for short windows and daily buckets for multi-day windows
 - stores only compact per-scan derived values locally and fetches only new radar scans after the initial backfill
 - keeps setup validation lightweight by probing only a short recent radar window during config flow
 - backfills older radar history gradually after setup so 24-hour totals become complete without blocking configuration
@@ -47,3 +47,4 @@ Notes:
 - uses the DMI Radar Data API at `opendataapi.dmi.dk`
 - polling defaults to 600 seconds and is clamped to a minimum of 300 seconds
 - history-based sensors are built from downloaded recent radar scans, not from station measurements
+- long-window sensors (`3d`, `7d`, `14d`, `28d`) use daily chart buckets to keep entity attributes compact

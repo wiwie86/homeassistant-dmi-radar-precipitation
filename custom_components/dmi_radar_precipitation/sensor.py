@@ -180,6 +180,8 @@ def _bucket_sizes_for_window(window_hours: int) -> tuple[int, ...]:
         return (60, 120, 180)
     if window_hours <= 24:
         return (60, 120, 180, 360, 720)
+    if window_hours > 24:
+        return (1440,)
     return ()
 
 
@@ -248,6 +250,46 @@ SENSOR_DESCRIPTIONS: tuple[DMIRadarSensorDescription, ...] = (
         entity_registry_enabled_default=False,
         value_fn=lambda snapshot: _aggregate_value(snapshot, 24),
         attributes_fn=lambda snapshot: _window_bucket_attributes(snapshot, 24),
+    ),
+    DMIRadarSensorDescription(
+        key="precipitation_past_3_days",
+        name="Precipitation Past 3 Days",
+        icon="mdi:weather-pouring",
+        native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        suggested_display_precision=2,
+        entity_registry_enabled_default=False,
+        value_fn=lambda snapshot: _aggregate_value(snapshot, 24 * 3),
+        attributes_fn=lambda snapshot: _window_bucket_attributes(snapshot, 24 * 3),
+    ),
+    DMIRadarSensorDescription(
+        key="precipitation_past_7_days",
+        name="Precipitation Past 7 Days",
+        icon="mdi:weather-pouring",
+        native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        suggested_display_precision=2,
+        entity_registry_enabled_default=False,
+        value_fn=lambda snapshot: _aggregate_value(snapshot, 24 * 7),
+        attributes_fn=lambda snapshot: _window_bucket_attributes(snapshot, 24 * 7),
+    ),
+    DMIRadarSensorDescription(
+        key="precipitation_past_14_days",
+        name="Precipitation Past 14 Days",
+        icon="mdi:weather-pouring",
+        native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        suggested_display_precision=2,
+        entity_registry_enabled_default=False,
+        value_fn=lambda snapshot: _aggregate_value(snapshot, 24 * 14),
+        attributes_fn=lambda snapshot: _window_bucket_attributes(snapshot, 24 * 14),
+    ),
+    DMIRadarSensorDescription(
+        key="precipitation_past_28_days",
+        name="Precipitation Past 28 Days",
+        icon="mdi:weather-pouring",
+        native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        suggested_display_precision=2,
+        entity_registry_enabled_default=False,
+        value_fn=lambda snapshot: _aggregate_value(snapshot, 24 * 28),
+        attributes_fn=lambda snapshot: _window_bucket_attributes(snapshot, 24 * 28),
     ),
     DMIRadarSensorDescription(
         key="latest_observed",
