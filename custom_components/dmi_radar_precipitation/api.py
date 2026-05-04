@@ -67,6 +67,8 @@ class RadarSnapshot:
     latest: RadarScanSample | None
     history: tuple[RadarScanSample, ...]
     fetched_at: datetime
+    coverage_start: datetime | None
+    coverage_complete: bool
 
 
 @dataclass(slots=True)
@@ -98,10 +100,79 @@ class DMIRadarClient:
         latest_known = existing_history[-1].observed if existing_history else None
         query_start = latest_known + timedelta(seconds=1) if latest_known else start
         limit = DEFAULT_LIMIT if existing_history else history_hours * SCANS_PER_HOUR + 6
+        return await self._async_fetch_and_merge(
+            latitude,
+            longitude,
+            existing_history,
+            query_start,
+            end,
+            limit,
+            start,
+        )
+
+    async def async_backfill_history(
+        self,
+        latitude: float,
+        longitude: float,
+        existing_history: tuple[RadarScanSample, ...],
+        backfill_hours: int,
+        max_history_hours: int = HISTORY_HOURS,
+    ) -> RadarFetchResult:
+        """Fetch one older history chunk before the currently cached oldest sample."""
+        if not existing_history:
+            return await self.async_get_snapshot(
+                latitude,
+                longitude,
+                existing_history=existing_history,
+                max_history_hours=max_history_hours,
+            )
+
+        end = datetime.now(tz=UTC).replace(microsecond=0)
+        target_start = end - timedelta(hours=max_history_hours)
+        oldest_known = existing_history[0].observed
+        if oldest_known <= target_start:
+            snapshot = RadarSnapshot(
+                requested_latitude=latitude,
+                requested_longitude=longitude,
+                radar_point=self._point_cache.get(_point_cache_key(latitude, longitude))
+                or RadarPoint(latitude, longitude, 0, 0, 500.0, 0.0),
+                latest=existing_history[-1],
+                history=existing_history,
+                fetched_at=end,
+                coverage_start=existing_history[0].observed,
+                coverage_complete=True,
+            )
+            return RadarFetchResult(snapshot=snapshot, updated_history=existing_history)
+
+        chunk_end = oldest_known - timedelta(seconds=1)
+        chunk_start = max(target_start, oldest_known - timedelta(hours=backfill_hours))
+        limit = backfill_hours * SCANS_PER_HOUR + 6
+
+        return await self._async_fetch_and_merge(
+            latitude,
+            longitude,
+            existing_history,
+            chunk_start,
+            chunk_end,
+            limit,
+            target_start,
+        )
+
+    async def _async_fetch_and_merge(
+        self,
+        latitude: float,
+        longitude: float,
+        existing_history: tuple[RadarScanSample, ...],
+        query_start: datetime,
+        query_end: datetime,
+        limit: int,
+        trim_start: datetime,
+    ) -> RadarFetchResult:
+        """Fetch a time window of radar scans and merge them with cached history."""
         payload = await self._async_get_json(
             f"collections/{COLLECTION_COMPOSITE}/items",
             {
-                "datetime": f"{_format_datetime(query_start)}/{_format_datetime(end)}",
+                "datetime": f"{_format_datetime(query_start)}/{_format_datetime(query_end)}",
                 "sortorder": "datetime,DESC",
                 "limit": str(limit),
             },
@@ -131,8 +202,11 @@ class DMIRadarClient:
                 "No recent radar scans were available for the selected location and time window.",
             )
 
-        samples = [sample for sample in samples if sample.observed >= start]
+        samples = [sample for sample in samples if sample.observed >= trim_start]
         samples.sort(key=lambda sample: sample.observed)
+
+        now = datetime.now(tz=UTC)
+        target_start = now - timedelta(hours=HISTORY_HOURS)
 
         snapshot = RadarSnapshot(
             requested_latitude=latitude,
@@ -140,7 +214,9 @@ class DMIRadarClient:
             radar_point=radar_point or RadarPoint(latitude, longitude, 0, 0, 500.0, 0.0),
             latest=samples[-1] if samples else None,
             history=tuple(samples),
-            fetched_at=datetime.now(tz=UTC),
+            fetched_at=now,
+            coverage_start=samples[0].observed if samples else None,
+            coverage_complete=bool(samples and samples[0].observed <= target_start),
         )
         self._point_cache[_point_cache_key(latitude, longitude)] = snapshot.radar_point
         return RadarFetchResult(snapshot=snapshot, updated_history=tuple(samples))

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription
@@ -40,6 +40,8 @@ def _common_attributes(snapshot: RadarSnapshot) -> dict[str, Any]:
         "radar_column": snapshot.radar_point.column,
         "distance_from_target_km": round(snapshot.radar_point.distance_from_target_km, 3),
         "grid_spacing_m": snapshot.radar_point.grid_spacing_m,
+        "history_coverage_start": snapshot.coverage_start.isoformat() if snapshot.coverage_start else None,
+        "history_coverage_complete": snapshot.coverage_complete,
     }
 
 
@@ -76,11 +78,13 @@ def _aggregate_attributes(snapshot: RadarSnapshot, hours: int) -> dict[str, Any]
         latest = snapshot.history[-1].observed
         cutoff = latest.timestamp() - hours * 3600
         relevant = [sample for sample in snapshot.history if sample.observed.timestamp() > cutoff]
+        window_complete = bool(snapshot.coverage_start and snapshot.coverage_start <= latest - timedelta(hours=hours))
         attributes.update(
             {
                 "window": f"{hours}h",
                 "sample_count": len(relevant),
                 "latest_sample": latest.isoformat(),
+                "window_complete": window_complete,
                 "history": [
                     {
                         "observed": sample.observed.isoformat(),

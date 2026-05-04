@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 import logging
 
 from homeassistant.config_entries import ConfigEntry
@@ -12,7 +12,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import DMIRadarClient, DMIRadarConnectionError, RadarScanSample, RadarSnapshot
-from .const import CONF_SCAN_INTERVAL, DEFAULT_NAME, DEFAULT_SCAN_INTERVAL, DOMAIN, MIN_SCAN_INTERVAL
+from .const import BACKFILL_CHUNK_HOURS, CONF_SCAN_INTERVAL, DEFAULT_NAME, DEFAULT_SCAN_INTERVAL, DOMAIN, HISTORY_HOURS, MIN_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 STORAGE_VERSION = 1
@@ -56,11 +56,46 @@ class DMIRadarPrecipitationCoordinator(DataUpdateCoordinator[RadarSnapshot]):
                 existing_history=self._history,
             )
             self._history = result.updated_history
+            self._history = await self._async_backfill_history(self._history)
             await self._async_save_history(self._history)
-            return result.snapshot
+            return RadarSnapshot(
+                requested_latitude=result.snapshot.requested_latitude,
+                requested_longitude=result.snapshot.requested_longitude,
+                radar_point=result.snapshot.radar_point,
+                latest=self._history[-1] if self._history else None,
+                history=self._history,
+                fetched_at=result.snapshot.fetched_at,
+                coverage_start=self._history[0].observed if self._history else None,
+                coverage_complete=bool(
+                    self._history and self._history[0].observed <= datetime.now(tz=UTC) - timedelta(hours=HISTORY_HOURS)
+                ),
+            )
         except DMIRadarConnectionError as error:
             _LOGGER.warning("Radar update failed for %.6f, %.6f: %s", self.latitude, self.longitude, error)
             raise UpdateFailed(f"Could not fetch DMI radar data: {error}") from error
+
+    async def _async_backfill_history(self, history: tuple[RadarScanSample, ...]) -> tuple[RadarScanSample, ...]:
+        """Backfill older radar scans in small chunks after setup."""
+        if not history:
+            return history
+
+        oldest = history[0].observed
+        target_start = datetime.now(tz=UTC) - timedelta(hours=HISTORY_HOURS)
+        if oldest <= target_start:
+            return history
+
+        result = await self.client.async_backfill_history(
+            self.latitude,
+            self.longitude,
+            existing_history=history,
+            backfill_hours=BACKFILL_CHUNK_HOURS,
+            max_history_hours=HISTORY_HOURS,
+        )
+
+        if result.updated_history == history:
+            return history
+
+        return result.updated_history
 
     async def _async_load_history(self) -> tuple[RadarScanSample, ...]:
         """Load cached scan samples from Home Assistant storage."""
