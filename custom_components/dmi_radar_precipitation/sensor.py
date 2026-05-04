@@ -10,7 +10,7 @@ from typing import Any
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription
 from homeassistant.components.sensor.const import SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory, UnitOfLength, UnitOfPrecipitationDepthRate
+from homeassistant.const import EntityCategory, UnitOfLength, UnitOfVolumetricFlux
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -108,7 +108,7 @@ SENSOR_DESCRIPTIONS: tuple[DMIRadarSensorDescription, ...] = (
         name="Rain Rate",
         icon="mdi:weather-rainy",
         device_class=SensorDeviceClass.PRECIPITATION_INTENSITY,
-        native_unit_of_measurement=UnitOfPrecipitationDepthRate.MILLIMETERS_PER_HOUR,
+        native_unit_of_measurement=UnitOfVolumetricFlux.MILLIMETERS_PER_HOUR,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,
         value_fn=lambda snapshot: round(snapshot.latest.rain_rate_mm_per_hour, 3) if snapshot.latest else None,
