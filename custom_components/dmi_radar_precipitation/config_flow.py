@@ -40,7 +40,11 @@ def _user_schema(defaults: dict[str, Any]) -> vol.Schema:
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     client = DMIRadarClient(aiohttp_client.async_get_clientsession(hass))
-    result = await client.async_get_snapshot(float(data[CONF_LATITUDE]), float(data[CONF_LONGITUDE]))
+    result = await client.async_get_snapshot(
+        float(data[CONF_LATITUDE]),
+        float(data[CONF_LONGITUDE]),
+        max_history_hours=1,
+    )
     snapshot = result.snapshot
     return {
         "title": f"Radar {data[CONF_LATITUDE]:.4f}, {data[CONF_LONGITUDE]:.4f}",

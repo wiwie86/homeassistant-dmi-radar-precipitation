@@ -10,6 +10,7 @@ What it does:
 - converts radar reflectivity to estimated rain rate using the Z-R relation embedded in the file
 - exposes sensors for current rain rate and derived precipitation sums over recent time windows
 - stores only compact per-scan derived values locally and fetches only new radar scans after the initial backfill
+- keeps setup validation lightweight by probing only a short recent radar window during config flow
 
 Important limitations:
 - this is a draft approximation based on radar reflectivity, not gauge-corrected rain measurements

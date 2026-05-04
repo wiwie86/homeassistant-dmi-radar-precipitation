@@ -12,7 +12,7 @@ import h5py
 from aiohttp import ClientError, ClientResponseError, ClientSession, ClientTimeout
 from pyproj import CRS, Transformer
 
-from .const import COLLECTION_COMPOSITE, DEFAULT_LIMIT, HISTORY_HOURS
+from .const import COLLECTION_COMPOSITE, DEFAULT_LIMIT, HISTORY_HOURS, INITIAL_HISTORY_HOURS, SCANS_PER_HOUR
 
 BASE_URL = "https://opendataapi.dmi.dk/v1/radardata"
 REQUEST_TIMEOUT = ClientTimeout(total=60)
@@ -84,18 +84,21 @@ class DMIRadarClient:
         latitude: float,
         longitude: float,
         existing_history: tuple[RadarScanSample, ...] = (),
+        max_history_hours: int = HISTORY_HOURS,
     ) -> RadarFetchResult:
         """Fetch only new radar scans and merge them with local history."""
         end = datetime.now(tz=UTC).replace(microsecond=0)
-        start = end - timedelta(hours=HISTORY_HOURS)
+        history_hours = max_history_hours if existing_history else INITIAL_HISTORY_HOURS
+        start = end - timedelta(hours=history_hours)
         latest_known = existing_history[-1].observed if existing_history else None
         query_start = latest_known + timedelta(seconds=1) if latest_known else start
+        limit = DEFAULT_LIMIT if existing_history else history_hours * SCANS_PER_HOUR + 6
         payload = await self._async_get_json(
             f"collections/{COLLECTION_COMPOSITE}/items",
             {
                 "datetime": f"{_format_datetime(query_start)}/{_format_datetime(end)}",
                 "sortorder": "datetime,DESC",
-                "limit": str(DEFAULT_LIMIT),
+                "limit": str(limit),
             },
         )
 
