@@ -12,7 +12,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import DMIRadarClient, DMIRadarConnectionError, RadarScanSample, RadarSnapshot
-from .const import CONF_LATITUDE, CONF_LONGITUDE, CONF_SCAN_INTERVAL, DEFAULT_NAME, DEFAULT_SCAN_INTERVAL, DOMAIN, MIN_SCAN_INTERVAL
+from .const import CONF_SCAN_INTERVAL, DEFAULT_NAME, DEFAULT_SCAN_INTERVAL, DOMAIN, MIN_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 STORAGE_VERSION = 1
@@ -26,8 +26,8 @@ class DMIRadarPrecipitationCoordinator(DataUpdateCoordinator[RadarSnapshot]):
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         self.config_entry = entry
         config = {**entry.data, **entry.options}
-        self.latitude = float(config[CONF_LATITUDE])
-        self.longitude = float(config[CONF_LONGITUDE])
+        self.latitude = float(config["latitude"])
+        self.longitude = float(config["longitude"])
         self.client = DMIRadarClient(aiohttp_client.async_get_clientsession(hass))
         self.store = Store(hass, STORAGE_VERSION, f"{DOMAIN}.{entry.entry_id}")
         self._history: tuple[RadarScanSample, ...] = ()
