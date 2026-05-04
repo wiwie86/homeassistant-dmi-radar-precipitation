@@ -1,0 +1,29 @@
+{
+  "config": {
+    "error": {
+      "cannot_connect": "Verbindung zur DMI-Radar-API fehlgeschlagen",
+      "unknown": "Unerwarteter Fehler"
+    },
+    "step": {
+      "user": {
+        "title": "DMI Radar Precipitation hinzufuegen",
+        "description": "Schaetze lokalen Niederschlag aus DMI-Radar-Kompositen.",
+        "data": {
+          "latitude": "Breitengrad",
+          "longitude": "Laengengrad"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "DMI Radar Precipitation Optionen",
+        "description": "Lege fest, wie oft Radardaten abgefragt werden. Das Minimum sind 300 Sekunden.",
+        "data": {
+          "scan_interval": "Aktualisierungsintervall (Sekunden)"
+        }
+      }
+    }
+  }
+}

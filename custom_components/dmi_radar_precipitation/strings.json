@@ -1,0 +1,29 @@
+{
+  "config": {
+    "error": {
+      "cannot_connect": "Failed to connect to DMI Radar API",
+      "unknown": "Unexpected error"
+    },
+    "step": {
+      "user": {
+        "title": "Add DMI Radar Precipitation",
+        "description": "Estimate local precipitation from DMI radar composites.",
+        "data": {
+          "latitude": "Latitude",
+          "longitude": "Longitude"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "DMI Radar Precipitation Options",
+        "description": "Adjust how often radar data is fetched. The minimum is 300 seconds.",
+        "data": {
+          "scan_interval": "Update interval (seconds)"
+        }
+      }
+    }
+  }
+}
