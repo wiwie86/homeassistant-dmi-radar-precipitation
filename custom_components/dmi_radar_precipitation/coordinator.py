@@ -83,6 +83,13 @@ class DMIRadarPrecipitationCoordinator(DataUpdateCoordinator[RadarSnapshot]):
             self._history = result.updated_history
             self._history = await self._async_backfill_history(self._history)
             await self._async_save_history(self._history)
+            latest_observed = self._history[-1].observed if self._history else None
+            coverage_complete = bool(
+                self._history
+                and latest_observed is not None
+                and self._history[0].observed <= latest_observed - timedelta(hours=HISTORY_HOURS)
+            )
+
             snapshot = RadarSnapshot(
                 requested_latitude=result.snapshot.requested_latitude,
                 requested_longitude=result.snapshot.requested_longitude,
@@ -91,9 +98,7 @@ class DMIRadarPrecipitationCoordinator(DataUpdateCoordinator[RadarSnapshot]):
                 history=self._history,
                 fetched_at=result.snapshot.fetched_at,
                 coverage_start=self._history[0].observed if self._history else None,
-                coverage_complete=bool(
-                    self._history and self._history[0].observed <= datetime.now(tz=UTC) - timedelta(hours=HISTORY_HOURS)
-                ),
+                coverage_complete=coverage_complete,
             )
             if snapshot.coverage_complete:
                 _LOGGER.info(
@@ -120,7 +125,7 @@ class DMIRadarPrecipitationCoordinator(DataUpdateCoordinator[RadarSnapshot]):
             return history
 
         oldest = history[0].observed
-        target_start = datetime.now(tz=UTC) - timedelta(hours=HISTORY_HOURS)
+        target_start = history[-1].observed - timedelta(hours=HISTORY_HOURS)
         if oldest <= target_start:
             return history
 
@@ -211,6 +216,7 @@ def _parse_datetime(value: str | None):
     """Parse an ISO datetime from storage."""
     if value is None:
         return None
-    from datetime import datetime
-
-    return datetime.fromisoformat(value)
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)

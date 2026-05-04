@@ -34,7 +34,7 @@ Local installation:
 1. Copy the integration folder into your Home Assistant config:
 
 ```bash
-cp -r /home/chris/git/dmi_radar_precipitation_ha/custom_components/dmi_radar_precipitation /home/chris/git/homeassistant/config/custom_components/
+cp -r custom_components/dmi_radar_precipitation /config/custom_components/
 ```
 
 2. Restart Home Assistant.

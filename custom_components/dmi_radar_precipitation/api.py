@@ -127,8 +127,8 @@ class DMIRadarClient:
                 max_history_hours=max_history_hours,
             )
 
-        end = datetime.now(tz=UTC).replace(microsecond=0)
-        target_start = end - timedelta(hours=max_history_hours)
+        reference_end = existing_history[-1].observed
+        target_start = reference_end - timedelta(hours=max_history_hours)
         oldest_known = existing_history[0].observed
         if oldest_known <= target_start:
             snapshot = RadarSnapshot(
@@ -138,7 +138,7 @@ class DMIRadarClient:
                 or RadarPoint(latitude, longitude, 0, 0, 500.0, 0.0),
                 latest=existing_history[-1],
                 history=existing_history,
-                fetched_at=end,
+                fetched_at=datetime.now(tz=UTC),
                 coverage_start=existing_history[0].observed,
                 coverage_complete=True,
             )
@@ -206,7 +206,8 @@ class DMIRadarClient:
         samples.sort(key=lambda sample: sample.observed)
 
         now = datetime.now(tz=UTC)
-        target_start = now - timedelta(hours=HISTORY_HOURS)
+        latest_observed = samples[-1].observed
+        target_start = latest_observed - timedelta(hours=HISTORY_HOURS)
 
         snapshot = RadarSnapshot(
             requested_latitude=latitude,
@@ -351,7 +352,10 @@ def _parse_datetime(value: str | None) -> datetime | None:
     """Parse an ISO datetime."""
     if value is None:
         return None
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def _format_datetime(value: datetime) -> str:
