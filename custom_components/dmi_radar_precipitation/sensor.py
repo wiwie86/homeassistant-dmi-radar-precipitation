@@ -15,6 +15,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .api import RadarSnapshot
 from .const import ATTRIBUTION, DOMAIN
@@ -106,6 +107,73 @@ def _distance_value(snapshot: RadarSnapshot) -> float:
     return round(snapshot.radar_point.distance_from_target_km, 3)
 
 
+def _aligned_interval_value(snapshot: RadarSnapshot, minutes: int) -> float | None:
+    if not snapshot.history:
+        return None
+
+    latest = snapshot.history[-1].observed
+    bucket_start_local, _bucket_end_local = _aligned_interval_bounds(latest, minutes)
+    bucket_start_utc = bucket_start_local.astimezone(dt_util.UTC)
+    values = [sample.estimated_mm for sample in snapshot.history if sample.observed >= bucket_start_utc]
+    return round(sum(values), 3)
+
+
+def _aligned_interval_attributes(snapshot: RadarSnapshot, minutes: int) -> dict[str, Any]:
+    attributes = _common_attributes(snapshot)
+    if not snapshot.history:
+        return attributes
+
+    latest = snapshot.history[-1].observed
+    bucket_start_local, bucket_end_local = _aligned_interval_bounds(latest, minutes)
+    bucket_start_utc = bucket_start_local.astimezone(dt_util.UTC)
+    relevant = [sample for sample in snapshot.history if sample.observed >= bucket_start_utc]
+    attributes.update(
+        {
+            "bucket_minutes": minutes,
+            "bucket_start": bucket_start_local.isoformat(),
+            "bucket_end": bucket_end_local.isoformat(),
+            "bucket_complete_from_start": bool(
+                snapshot.coverage_start and snapshot.coverage_start <= bucket_start_utc
+            ),
+            "aligned_to_local_midnight": True,
+            "sample_count": len(relevant),
+            "history": [
+                {
+                    "observed": sample.observed.isoformat(),
+                    "mm": sample.estimated_mm,
+                    "rain_rate_mm_per_hour": sample.rain_rate_mm_per_hour,
+                }
+                for sample in relevant
+            ],
+        }
+    )
+    return attributes
+
+
+def _aligned_interval_bounds(observed: datetime, minutes: int) -> tuple[datetime, datetime]:
+    latest_local = dt_util.as_local(observed)
+    start_of_day = latest_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    bucket = timedelta(minutes=minutes)
+    bucket_index = int((latest_local - start_of_day).total_seconds() // bucket.total_seconds())
+    bucket_start = start_of_day + bucket * bucket_index
+    bucket_end = bucket_start + bucket
+    return bucket_start, bucket_end
+
+
+ALIGNED_BUCKET_SIZES: tuple[tuple[int, str], ...] = (
+    (10, "10 Minute Bucket"),
+    (20, "20 Minute Bucket"),
+    (30, "30 Minute Bucket"),
+    (60, "1 Hour Bucket"),
+    (120, "2 Hour Bucket"),
+    (180, "3 Hour Bucket"),
+    (240, "4 Hour Bucket"),
+    (360, "6 Hour Bucket"),
+    (720, "12 Hour Bucket"),
+    (1440, "24 Hour Bucket"),
+)
+
+
 SENSOR_DESCRIPTIONS: tuple[DMIRadarSensorDescription, ...] = (
     DMIRadarSensorDescription(
         key="rain_rate",
@@ -185,6 +253,17 @@ SENSOR_DESCRIPTIONS: tuple[DMIRadarSensorDescription, ...] = (
         value_fn=_distance_value,
         attributes_fn=_latest_attributes,
     ),
+) + tuple(
+    DMIRadarSensorDescription(
+        key=f"precipitation_{minutes}_minute_bucket",
+        name=f"Precipitation {label}",
+        icon="mdi:chart-bar",
+        native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        suggested_display_precision=2,
+        value_fn=lambda snapshot, bucket_minutes=minutes: _aligned_interval_value(snapshot, bucket_minutes),
+        attributes_fn=lambda snapshot, bucket_minutes=minutes: _aligned_interval_attributes(snapshot, bucket_minutes),
+    )
+    for minutes, label in ALIGNED_BUCKET_SIZES
 )
 
 
