@@ -19,8 +19,9 @@
     "step": {
       "init": {
         "title": "DMI Radar Precipitation Optionen",
-        "description": "Lege fest, wie oft Radardaten abgefragt werden. Das Minimum sind 300 Sekunden.",
+        "description": "Lege fest, wie oft Radardaten abgefragt werden.\n\nBackfill ist standardmaessig deaktiviert. Wenn du es aktivierst, laedt und verarbeitet Home Assistant schrittweise viele historische Radar-Dateien. Je nach Zeitspanne kann das lange dauern und viele Downloads ausloesen, bevor die Historie vollstaendig ist.",
         "data": {
+          "enable_backfill": "Historischen Backfill aktivieren",
           "scan_interval": "Aktualisierungsintervall (Sekunden)"
         }
       }

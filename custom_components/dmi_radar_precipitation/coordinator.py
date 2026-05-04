@@ -12,7 +12,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import DMIRadarClient, DMIRadarConnectionError, RadarScanSample, RadarSnapshot
-from .const import BACKFILL_CHUNK_HOURS, CONF_SCAN_INTERVAL, DEFAULT_NAME, DEFAULT_SCAN_INTERVAL, DOMAIN, HISTORY_HOURS, MIN_SCAN_INTERVAL
+from .const import BACKFILL_CHUNK_HOURS, CONF_ENABLE_BACKFILL, CONF_SCAN_INTERVAL, DEFAULT_ENABLE_BACKFILL, DEFAULT_NAME, DEFAULT_SCAN_INTERVAL, DOMAIN, HISTORY_HOURS, MIN_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 STORAGE_VERSION = 1
@@ -28,6 +28,7 @@ class DMIRadarPrecipitationCoordinator(DataUpdateCoordinator[RadarSnapshot]):
         config = {**entry.data, **entry.options}
         self.latitude = float(config["latitude"])
         self.longitude = float(config["longitude"])
+        self.enable_backfill = bool(config.get(CONF_ENABLE_BACKFILL, DEFAULT_ENABLE_BACKFILL))
         self.client = DMIRadarClient(aiohttp_client.async_get_clientsession(hass))
         self.store = Store(hass, STORAGE_VERSION, f"{DOMAIN}.{entry.entry_id}")
         self._history: tuple[RadarScanSample, ...] = ()
@@ -64,6 +65,12 @@ class DMIRadarPrecipitationCoordinator(DataUpdateCoordinator[RadarSnapshot]):
                         self.latitude,
                         self.longitude,
                     )
+                    if not self.enable_backfill:
+                        _LOGGER.info(
+                            "Radar history backfill is disabled for %.6f, %.6f; only recent data will be kept current",
+                            self.latitude,
+                            self.longitude,
+                        )
 
             result = await self.client.async_get_snapshot(
                 self.latitude,
@@ -81,7 +88,8 @@ class DMIRadarPrecipitationCoordinator(DataUpdateCoordinator[RadarSnapshot]):
                     result.updated_history[-1].observed.isoformat(),
                 )
             self._history = result.updated_history
-            self._history = await self._async_backfill_history(self._history)
+            if self.enable_backfill:
+                self._history = await self._async_backfill_history(self._history)
             await self._async_save_history(self._history)
             latest_observed = self._history[-1].observed if self._history else None
             coverage_complete = bool(
@@ -109,7 +117,8 @@ class DMIRadarPrecipitationCoordinator(DataUpdateCoordinator[RadarSnapshot]):
                 )
             else:
                 _LOGGER.info(
-                    "Radar history backfill still in progress for %.6f, %.6f; current coverage starts at %s",
+                    "Radar history %s for %.6f, %.6f; current coverage starts at %s",
+                    "backfill still in progress" if self.enable_backfill else "coverage remains limited because backfill is disabled",
                     self.latitude,
                     self.longitude,
                     snapshot.coverage_start.isoformat() if snapshot.coverage_start else "unknown",

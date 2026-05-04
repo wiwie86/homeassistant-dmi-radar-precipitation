@@ -48,3 +48,4 @@ Notes:
 - polling defaults to 600 seconds and is clamped to a minimum of 300 seconds
 - history-based sensors are built from downloaded recent radar scans, not from station measurements
 - long-window sensors use compact chart buckets (`3d`: 6h, 12h, 1d; `7d`: 12h, 1d; `14d+`: 1d) to avoid oversized entity attributes
+- historical backfill is disabled by default and can be enabled in the integration options if you want Home Assistant to gradually download older radar files

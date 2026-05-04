@@ -7,8 +7,10 @@ from homeassistant.const import Platform
 DOMAIN = "dmi_radar_precipitation"
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
+CONF_ENABLE_BACKFILL = "enable_backfill"
 CONF_SCAN_INTERVAL = "scan_interval"
 
+DEFAULT_ENABLE_BACKFILL = False
 DEFAULT_SCAN_INTERVAL = 600
 MIN_SCAN_INTERVAL = 300
 MAX_SCAN_INTERVAL = 3600
