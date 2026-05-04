@@ -18,7 +18,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .api import RadarSnapshot
-from .const import ATTRIBUTION, DOMAIN
+from .const import ATTRIBUTION, DOMAIN, RAIN_INTENSITY_OPTIONS
 from .coordinator import DMIRadarPrecipitationCoordinator
 
 
@@ -105,6 +105,17 @@ def _window_bucket_attributes(snapshot: RadarSnapshot, window_hours: int) -> dic
 
 def _latest_observed(snapshot: RadarSnapshot) -> datetime | None:
     return snapshot.latest.observed if snapshot.latest is not None else None
+
+
+def _rain_intensity_attributes(snapshot: RadarSnapshot, coordinator: DMIRadarPrecipitationCoordinator) -> dict[str, Any]:
+    attributes = _latest_attributes(snapshot)
+    attributes.update(
+        {
+            "light_rain_threshold_mm_per_hour": round(coordinator.light_rain_threshold, 3),
+            "heavy_rain_threshold_mm_per_hour": round(coordinator.heavy_rain_threshold, 3),
+        }
+    )
+    return attributes
 
 
 def _distance_value(snapshot: RadarSnapshot) -> float:
@@ -199,6 +210,16 @@ SENSOR_DESCRIPTIONS: tuple[DMIRadarSensorDescription, ...] = (
         suggested_display_precision=2,
         value_fn=lambda snapshot: round(snapshot.latest.rain_rate_mm_per_hour, 3) if snapshot.latest else None,
         attributes_fn=_latest_attributes,
+    ),
+    DMIRadarSensorDescription(
+        key="rain_intensity",
+        translation_key="rain_intensity",
+        name=None,
+        device_class=SensorDeviceClass.ENUM,
+        options=RAIN_INTENSITY_OPTIONS,
+        icon="mdi:weather-rainy",
+        value_fn=lambda snapshot: None,
+        attributes_fn=lambda snapshot: {},
     ),
     DMIRadarSensorDescription(
         key="precipitation_past_hour",
@@ -337,8 +358,12 @@ class DMIRadarSensor(CoordinatorEntity[DMIRadarPrecipitationCoordinator], Sensor
 
     @property
     def native_value(self) -> Any:
+        if self.entity_description.key == "rain_intensity":
+            return self.coordinator.rain_intensity_state(self.coordinator.data.latest)
         return self.entity_description.value_fn(self.coordinator.data)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
+        if self.entity_description.key == "rain_intensity":
+            return _rain_intensity_attributes(self.coordinator.data, self.coordinator)
         return self.entity_description.attributes_fn(self.coordinator.data)

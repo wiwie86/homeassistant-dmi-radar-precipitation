@@ -7,14 +7,14 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.const import CONF_LATITUDE, CONF_LONGITUDE
+from homeassistant.const import CONF_LATITUDE, CONF_LONGITUDE, UnitOfVolumetricFlux
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import aiohttp_client
 from homeassistant.helpers.selector import BooleanSelector, NumberSelector, NumberSelectorConfig, NumberSelectorMode
 
 from .api import DMIRadarClient, DMIRadarConnectionError
-from .const import CONF_ENABLE_BACKFILL, CONF_SCAN_INTERVAL, DEFAULT_ENABLE_BACKFILL, DEFAULT_SCAN_INTERVAL, DOMAIN, MAX_SCAN_INTERVAL, MIN_SCAN_INTERVAL
+from .const import CONF_ENABLE_BACKFILL, CONF_HEAVY_RAIN_THRESHOLD, CONF_LIGHT_RAIN_THRESHOLD, CONF_SCAN_INTERVAL, DEFAULT_ENABLE_BACKFILL, DEFAULT_HEAVY_RAIN_THRESHOLD, DEFAULT_LIGHT_RAIN_THRESHOLD, DEFAULT_SCAN_INTERVAL, DOMAIN, MAX_SCAN_INTERVAL, MIN_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -112,8 +112,7 @@ class DMIRadarPrecipitationOptionsFlow(config_entries.OptionsFlow):
         self._config_entry = config_entry
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+        errors: dict[str, str] = {}
 
         current_interval = self._config_entry.options.get(
             CONF_SCAN_INTERVAL,
@@ -123,16 +122,57 @@ class DMIRadarPrecipitationOptionsFlow(config_entries.OptionsFlow):
             CONF_ENABLE_BACKFILL,
             self._config_entry.data.get(CONF_ENABLE_BACKFILL, DEFAULT_ENABLE_BACKFILL),
         )
+        current_light_rain_threshold = self._config_entry.options.get(
+            CONF_LIGHT_RAIN_THRESHOLD,
+            self._config_entry.data.get(CONF_LIGHT_RAIN_THRESHOLD, DEFAULT_LIGHT_RAIN_THRESHOLD),
+        )
+        current_heavy_rain_threshold = self._config_entry.options.get(
+            CONF_HEAVY_RAIN_THRESHOLD,
+            self._config_entry.data.get(CONF_HEAVY_RAIN_THRESHOLD, DEFAULT_HEAVY_RAIN_THRESHOLD),
+        )
+
+        if user_input is not None:
+            light_rain_threshold = float(user_input[CONF_LIGHT_RAIN_THRESHOLD])
+            heavy_rain_threshold = float(user_input[CONF_HEAVY_RAIN_THRESHOLD])
+            current_backfill = bool(user_input[CONF_ENABLE_BACKFILL])
+            current_interval = int(user_input[CONF_SCAN_INTERVAL])
+            current_light_rain_threshold = light_rain_threshold
+            current_heavy_rain_threshold = heavy_rain_threshold
+            if heavy_rain_threshold <= light_rain_threshold:
+                errors["base"] = "heavy_threshold_too_low"
+            else:
+                user_input[CONF_LIGHT_RAIN_THRESHOLD] = light_rain_threshold
+                user_input[CONF_HEAVY_RAIN_THRESHOLD] = heavy_rain_threshold
+                return self.async_create_entry(title="", data=user_input)
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_ENABLE_BACKFILL, default=current_backfill): BooleanSelector({}),
+                    vol.Required(CONF_LIGHT_RAIN_THRESHOLD, default=current_light_rain_threshold): NumberSelector(
+                        NumberSelectorConfig(
+                            min=0,
+                            max=100,
+                            step=0.1,
+                            mode=NumberSelectorMode.BOX,
+                            unit_of_measurement=UnitOfVolumetricFlux.MILLIMETERS_PER_HOUR,
+                        )
+                    ),
+                    vol.Required(CONF_HEAVY_RAIN_THRESHOLD, default=current_heavy_rain_threshold): NumberSelector(
+                        NumberSelectorConfig(
+                            min=0,
+                            max=100,
+                            step=0.1,
+                            mode=NumberSelectorMode.BOX,
+                            unit_of_measurement=UnitOfVolumetricFlux.MILLIMETERS_PER_HOUR,
+                        )
+                    ),
                     vol.Required(CONF_SCAN_INTERVAL, default=current_interval): vol.All(
                         vol.Coerce(int),
                         vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
                     )
                 }
             ),
+            errors=errors,
         )

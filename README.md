@@ -9,6 +9,7 @@ What it does:
 - downloads recent DMI radar composite files and samples the nearest radar grid cell
 - converts radar reflectivity to estimated rain rate using the Z-R relation embedded in the file
 - exposes sensors for current rain rate and derived precipitation sums over recent time windows
+- exposes a rain intensity sensor with `no_rain`, `light_rain`, and `heavy_rain` states for state-based automations
 - exposes chart-friendly bucket attributes on rolling precipitation sensors, with finer buckets for short windows and daily buckets for multi-day windows
 - emits Home Assistant events when radar-derived rain starts or stops at the configured point
 - stores only compact per-scan derived values locally and fetches only new radar scans after the initial backfill
@@ -47,8 +48,24 @@ cp -r custom_components/dmi_radar_precipitation /config/custom_components/
 Notes:
 - uses the DMI Radar Data API at `opendataapi.dmi.dk`
 - polling defaults to 600 seconds and is clamped to a minimum of 300 seconds
+- rain intensity classification defaults to `0.1 mm/h` for rain detection and `4.0 mm/h` for heavy rain, and both thresholds are configurable in options
 - history-based sensors are built from downloaded recent radar scans, not from station measurements
 - long-window sensors use compact chart buckets (`3d`: 6h, 12h, 1d; `7d`: 12h, 1d; `14d+`: 1d) to avoid oversized entity attributes
 - rolling precipitation sensors no longer expose raw per-scan sample lists as attributes; use the bucket attributes for charts instead
 - historical backfill is disabled by default and can be enabled in the integration options if you want Home Assistant to gradually download older radar files
 - the integration fires `dmi_radar_precipitation_rain_started` and `dmi_radar_precipitation_rain_stopped` with metadata about the location, observation time, rain rate, and source radar file
+
+Automation example:
+
+```yaml
+automation:
+  - alias: Close skylight on heavy rain
+    triggers:
+      - trigger: state
+        entity_id: sensor.radar_55_3382_10_3016_rain_intensity
+        to: heavy_rain
+    actions:
+      - action: cover.close_cover
+        target:
+          entity_id: cover.skylight
+```

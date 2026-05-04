@@ -19,10 +19,27 @@
     "step": {
       "init": {
         "title": "DMI Radar Precipitation Optionen",
-        "description": "Lege fest, wie oft Radardaten abgefragt werden.\n\nBackfill ist standardmaessig deaktiviert. Wenn du es aktivierst, laedt und verarbeitet Home Assistant schrittweise viele historische Radar-Dateien. Je nach Zeitspanne kann das lange dauern und viele Downloads ausloesen, bevor die Historie vollstaendig ist.",
+        "description": "Lege fest, wie oft Radardaten abgefragt werden und wie Regenintensitaet eingestuft wird.\n\nBackfill ist standardmaessig deaktiviert. Wenn du es aktivierst, laedt und verarbeitet Home Assistant schrittweise viele historische Radar-Dateien. Je nach Zeitspanne kann das lange dauern und viele Downloads ausloesen, bevor die Historie vollstaendig ist.\n\nDMI unterscheidet oeffentlich in den Wettersymbolen zwischen leichtem und starkem Regen und verwendet 24 mm in 6 Stunden als Warnkriterium fuer starken Regen. Diese Integration verwendet deshalb standardmaessig 0.1 mm/h fuer die Regenerkennung und 4.0 mm/h als Schwellenwert fuer starken Regen.",
         "data": {
           "enable_backfill": "Historischen Backfill aktivieren",
+          "light_rain_threshold": "Schwellenwert fuer leichten Regen (mm/h)",
+          "heavy_rain_threshold": "Schwellenwert fuer starken Regen (mm/h)",
           "scan_interval": "Aktualisierungsintervall (Sekunden)"
+        }
+      }
+    },
+    "error": {
+      "heavy_threshold_too_low": "Der Schwellenwert fuer starken Regen muss groesser als der Schwellenwert fuer leichten Regen sein"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "rain_intensity": {
+        "name": "Regenintensitaet",
+        "state": {
+          "no_rain": "Kein Regen",
+          "light_rain": "Leichter Regen",
+          "heavy_rain": "Starker Regen"
         }
       }
     }

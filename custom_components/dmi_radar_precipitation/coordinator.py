@@ -12,7 +12,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import DMIRadarClient, DMIRadarConnectionError, RadarScanSample, RadarSnapshot
-from .const import BACKFILL_CHUNK_HOURS, CONF_ENABLE_BACKFILL, CONF_SCAN_INTERVAL, DEFAULT_ENABLE_BACKFILL, DEFAULT_NAME, DEFAULT_SCAN_INTERVAL, DOMAIN, EVENT_RAIN_STARTED, EVENT_RAIN_STOPPED, HISTORY_HOURS, MIN_SCAN_INTERVAL, RAINING_MM_PER_HOUR_THRESHOLD
+from .const import BACKFILL_CHUNK_HOURS, CONF_ENABLE_BACKFILL, CONF_HEAVY_RAIN_THRESHOLD, CONF_LIGHT_RAIN_THRESHOLD, CONF_SCAN_INTERVAL, DEFAULT_ENABLE_BACKFILL, DEFAULT_HEAVY_RAIN_THRESHOLD, DEFAULT_LIGHT_RAIN_THRESHOLD, DEFAULT_NAME, DEFAULT_SCAN_INTERVAL, DOMAIN, EVENT_RAIN_STARTED, EVENT_RAIN_STOPPED, HISTORY_HOURS, MIN_SCAN_INTERVAL, RAIN_INTENSITY_HEAVY_RAIN, RAIN_INTENSITY_LIGHT_RAIN, RAIN_INTENSITY_NO_RAIN
 
 _LOGGER = logging.getLogger(__name__)
 STORAGE_VERSION = 1
@@ -29,6 +29,10 @@ class DMIRadarPrecipitationCoordinator(DataUpdateCoordinator[RadarSnapshot]):
         self.latitude = float(config["latitude"])
         self.longitude = float(config["longitude"])
         self.enable_backfill = bool(config.get(CONF_ENABLE_BACKFILL, DEFAULT_ENABLE_BACKFILL))
+        self.light_rain_threshold = float(config.get(CONF_LIGHT_RAIN_THRESHOLD, DEFAULT_LIGHT_RAIN_THRESHOLD))
+        self.heavy_rain_threshold = float(config.get(CONF_HEAVY_RAIN_THRESHOLD, DEFAULT_HEAVY_RAIN_THRESHOLD))
+        if self.heavy_rain_threshold <= self.light_rain_threshold:
+            self.heavy_rain_threshold = max(self.light_rain_threshold + 0.1, DEFAULT_HEAVY_RAIN_THRESHOLD)
         self.client = DMIRadarClient(aiohttp_client.async_get_clientsession(hass))
         self.store = Store(hass, STORAGE_VERSION, f"{DOMAIN}.{entry.entry_id}")
         self._history: tuple[RadarScanSample, ...] = ()
@@ -52,7 +56,7 @@ class DMIRadarPrecipitationCoordinator(DataUpdateCoordinator[RadarSnapshot]):
             if not self._history:
                 self._history = await self._async_load_history()
                 if self._history:
-                    self._last_is_raining = _is_raining(self._history[-1])
+                    self._last_is_raining = self._is_raining(self._history[-1])
                     _LOGGER.info(
                         "Loaded %s cached radar scans for %.6f, %.6f with coverage from %s to %s",
                         len(self._history),
@@ -137,7 +141,7 @@ class DMIRadarPrecipitationCoordinator(DataUpdateCoordinator[RadarSnapshot]):
         if latest is None:
             return
 
-        is_raining = _is_raining(latest)
+        is_raining = self._is_raining(latest)
         previous_state = self._last_is_raining
         self._last_is_raining = is_raining
 
@@ -166,6 +170,20 @@ class DMIRadarPrecipitationCoordinator(DataUpdateCoordinator[RadarSnapshot]):
             latest.observed.isoformat(),
             latest.rain_rate_mm_per_hour,
         )
+
+    def rain_intensity_state(self, sample: RadarScanSample | None) -> str | None:
+        """Return the configured rain intensity state for a sample."""
+        if sample is None:
+            return None
+        if sample.rain_rate_mm_per_hour < self.light_rain_threshold:
+            return RAIN_INTENSITY_NO_RAIN
+        if sample.rain_rate_mm_per_hour < self.heavy_rain_threshold:
+            return RAIN_INTENSITY_LIGHT_RAIN
+        return RAIN_INTENSITY_HEAVY_RAIN
+
+    def _is_raining(self, sample: RadarScanSample) -> bool:
+        """Return whether a sampled radar scan indicates rain."""
+        return sample.rain_rate_mm_per_hour >= self.light_rain_threshold
 
     async def _async_backfill_history(self, history: tuple[RadarScanSample, ...]) -> tuple[RadarScanSample, ...]:
         """Backfill older radar scans in small chunks after setup."""
@@ -268,8 +286,3 @@ def _parse_datetime(value: str | None):
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC)
-
-
-def _is_raining(sample: RadarScanSample) -> bool:
-    """Return whether a sampled radar scan indicates rain."""
-    return sample.rain_rate_mm_per_hour > RAINING_MM_PER_HOUR_THRESHOLD

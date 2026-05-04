@@ -19,10 +19,27 @@
     "step": {
       "init": {
         "title": "DMI Radar Precipitation Options",
-        "description": "Adjust how often radar data is fetched.\n\nBackfill is disabled by default. If you enable it, Home Assistant will gradually download and process many historical radar files. Depending on the selected time span, this can take a long time and trigger many downloads before the history is complete.",
+        "description": "Adjust how often radar data is fetched and how rain intensity is classified.\n\nBackfill is disabled by default. If you enable it, Home Assistant will gradually download and process many historical radar files. Depending on the selected time span, this can take a long time and trigger many downloads before the history is complete.\n\nDMI publicly distinguishes between light rain and heavy rain in symbols and uses 24 mm over 6 hours as a warning criterion for heavy rain. This integration therefore defaults to 0.1 mm/h for rain detection and 4.0 mm/h for the heavy rain threshold.",
         "data": {
           "enable_backfill": "Enable historical backfill",
+          "light_rain_threshold": "Light rain threshold (mm/h)",
+          "heavy_rain_threshold": "Heavy rain threshold (mm/h)",
           "scan_interval": "Update interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "heavy_threshold_too_low": "Heavy rain threshold must be greater than the light rain threshold"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "rain_intensity": {
+        "name": "Rain Intensity",
+        "state": {
+          "no_rain": "No rain",
+          "light_rain": "Light rain",
+          "heavy_rain": "Heavy rain"
         }
       }
     }
