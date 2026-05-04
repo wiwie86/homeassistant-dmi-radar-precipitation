@@ -49,16 +49,41 @@ class DMIRadarPrecipitationCoordinator(DataUpdateCoordinator[RadarSnapshot]):
         try:
             if not self._history:
                 self._history = await self._async_load_history()
+                if self._history:
+                    _LOGGER.info(
+                        "Loaded %s cached radar scans for %.6f, %.6f with coverage from %s to %s",
+                        len(self._history),
+                        self.latitude,
+                        self.longitude,
+                        self._history[0].observed.isoformat(),
+                        self._history[-1].observed.isoformat(),
+                    )
+                else:
+                    _LOGGER.info(
+                        "No cached radar history found for %.6f, %.6f; starting with a short recent fetch",
+                        self.latitude,
+                        self.longitude,
+                    )
 
             result = await self.client.async_get_snapshot(
                 self.latitude,
                 self.longitude,
                 existing_history=self._history,
             )
+            if result.updated_history != self._history:
+                new_samples = len(result.updated_history) - len(self._history)
+                _LOGGER.info(
+                    "Fetched %s new radar scans for %.6f, %.6f; coverage is now %s to %s",
+                    new_samples,
+                    self.latitude,
+                    self.longitude,
+                    result.updated_history[0].observed.isoformat(),
+                    result.updated_history[-1].observed.isoformat(),
+                )
             self._history = result.updated_history
             self._history = await self._async_backfill_history(self._history)
             await self._async_save_history(self._history)
-            return RadarSnapshot(
+            snapshot = RadarSnapshot(
                 requested_latitude=result.snapshot.requested_latitude,
                 requested_longitude=result.snapshot.requested_longitude,
                 radar_point=result.snapshot.radar_point,
@@ -70,6 +95,21 @@ class DMIRadarPrecipitationCoordinator(DataUpdateCoordinator[RadarSnapshot]):
                     self._history and self._history[0].observed <= datetime.now(tz=UTC) - timedelta(hours=HISTORY_HOURS)
                 ),
             )
+            if snapshot.coverage_complete:
+                _LOGGER.info(
+                    "Radar history backfill complete for %.6f, %.6f; 24h coverage starts at %s",
+                    self.latitude,
+                    self.longitude,
+                    snapshot.coverage_start.isoformat() if snapshot.coverage_start else "unknown",
+                )
+            else:
+                _LOGGER.info(
+                    "Radar history backfill still in progress for %.6f, %.6f; current coverage starts at %s",
+                    self.latitude,
+                    self.longitude,
+                    snapshot.coverage_start.isoformat() if snapshot.coverage_start else "unknown",
+                )
+            return snapshot
         except DMIRadarConnectionError as error:
             _LOGGER.warning("Radar update failed for %.6f, %.6f: %s", self.latitude, self.longitude, error)
             raise UpdateFailed(f"Could not fetch DMI radar data: {error}") from error
@@ -84,6 +124,15 @@ class DMIRadarPrecipitationCoordinator(DataUpdateCoordinator[RadarSnapshot]):
         if oldest <= target_start:
             return history
 
+        _LOGGER.info(
+            "Backfilling older radar scans for %.6f, %.6f from %s further back toward %s in %sh chunks",
+            self.latitude,
+            self.longitude,
+            oldest.isoformat(),
+            target_start.isoformat(),
+            BACKFILL_CHUNK_HOURS,
+        )
+
         result = await self.client.async_backfill_history(
             self.latitude,
             self.longitude,
@@ -93,7 +142,23 @@ class DMIRadarPrecipitationCoordinator(DataUpdateCoordinator[RadarSnapshot]):
         )
 
         if result.updated_history == history:
+            _LOGGER.info(
+                "No older radar scans were added during backfill for %.6f, %.6f; coverage remains %s",
+                self.latitude,
+                self.longitude,
+                history[0].observed.isoformat(),
+            )
             return history
+
+        added_samples = len(result.updated_history) - len(history)
+        _LOGGER.info(
+            "Backfilled %s older radar scans for %.6f, %.6f; coverage moved from %s to %s",
+            added_samples,
+            self.latitude,
+            self.longitude,
+            history[0].observed.isoformat(),
+            result.updated_history[0].observed.isoformat(),
+        )
 
         return result.updated_history
 
