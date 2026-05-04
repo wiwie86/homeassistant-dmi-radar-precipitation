@@ -180,6 +180,8 @@ def _bucket_sizes_for_window(window_hours: int) -> tuple[int, ...]:
         return (60, 120, 180)
     if window_hours <= 24:
         return (60, 120, 180, 360, 720)
+    if window_hours <= 24 * 3:
+        return (720, 1440)
     if window_hours > 24:
         return (1440,)
     return ()

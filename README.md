@@ -47,4 +47,4 @@ Notes:
 - uses the DMI Radar Data API at `opendataapi.dmi.dk`
 - polling defaults to 600 seconds and is clamped to a minimum of 300 seconds
 - history-based sensors are built from downloaded recent radar scans, not from station measurements
-- long-window sensors (`3d`, `7d`, `14d`, `28d`) use daily chart buckets to keep entity attributes compact
+- long-window sensors use compact chart buckets (`3d`: 12h and 1d, `7d+`: 1d) to avoid oversized entity attributes

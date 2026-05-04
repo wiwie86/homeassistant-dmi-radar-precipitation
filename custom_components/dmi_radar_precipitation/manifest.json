@@ -9,5 +9,5 @@
   "issue_tracker": "https://github.com/wiwie86/homeassistant-dmi-radar-precipitation/issues",
   "loggers": ["custom_components.dmi_radar_precipitation"],
   "requirements": ["h5py==3.16.0", "pyproj==3.7.2"],
-  "version": "0.2.2"
+  "version": "0.2.3"
 }
